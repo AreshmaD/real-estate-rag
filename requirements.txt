@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pgvector
+sentence-transformers
+pypdf
+ollama
+python-dotenv
+streamlit
+requests
+jupyter
+ipykernel
+pandas
