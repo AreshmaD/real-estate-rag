@@ -38,17 +38,19 @@ User Question → Query Embedding → Retriever → Top Relevant Chunks → LLM 
 
 ## Project Structure
 
-''' text
+```text
 real-estate-rag/
 ├── app/
 ├── data/
+├── images/
 ├── notebooks/
 ├── scripts/
 ├── ui/
+├── .gitignore
+├── README.md
 ├── requirements.txt
-├── docker-compose.yml
-└── README.md
-'''
+└── docker-compose.yml
+```
 
 ## Setup
 
