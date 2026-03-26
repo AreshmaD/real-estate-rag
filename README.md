@@ -37,6 +37,7 @@ User Question → Query Embedding → Retriever → Top Relevant Chunks → LLM 
 - Jupyter Notebook
 
 ## Project Structure
+
 ''' text
 real-estate-rag/
 ├── app/
