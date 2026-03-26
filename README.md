@@ -37,7 +37,7 @@ User Question → Query Embedding → Retriever → Top Relevant Chunks → LLM 
 - Jupyter Notebook
 
 ## Project Structure
-'''
+''' text
 real-estate-rag/
 ├── app/
 ├── data/
@@ -47,7 +47,7 @@ real-estate-rag/
 ├── requirements.txt
 ├── docker-compose.yml
 └── README.md
-'''
+
 ## Setup
 
 ### 1. Clone the repository
