@@ -47,7 +47,7 @@ real-estate-rag/
 ├── requirements.txt
 ├── docker-compose.yml
 └── README.md
-
+'''
 ## Setup
 
 ### 1. Clone the repository
