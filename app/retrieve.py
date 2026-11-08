@@ -11,8 +11,8 @@ def search_similar_chunks(
     max_chunks_per_doc: int = 1,
     vector_weight: float = 0.5,
     keyword_weight: float = 0.5,
+    document_name: str | None = None,
 ):
-    session = SessionLocal()
     query_embedding = embed_query(query)
 
     vector_sql = text("""
@@ -25,20 +25,24 @@ def search_similar_chunks(
             text,
             embedding <=> CAST(:query_embedding AS vector) AS vector_distance
         FROM document_chunks
+        WHERE (
+            CAST(:document_name AS TEXT) IS NULL
+            OR document_name = CAST(:document_name AS TEXT)
+        )
         ORDER BY embedding <=> CAST(:query_embedding AS vector)
         LIMIT :initial_k
     """)
 
-    vector_results = session.execute(
-        vector_sql,
-        {
-            "query_embedding": str(query_embedding),
-            "initial_k": initial_k,
-        }
-    ).fetchall()
-
-    session.close()
-
+    with SessionLocal() as session:
+        vector_results = session.execute(
+            vector_sql,
+            {
+                "query_embedding": str(query_embedding),
+                "initial_k": initial_k,
+                "document_name": document_name,
+            },
+        ).fetchall()
+        
     results = [
         {
             "id": row[0],

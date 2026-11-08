@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.retrieve import search_similar_chunks
@@ -7,10 +7,15 @@ from app.load_service import load_all_documents
 
 app = FastAPI(title="Real Estate RAG Assistant")
 
+PROPERTY_DOCUMENTS = {
+    "SYN-001": "syn-001-property-packet.pdf",
+    "SYN-002": "syn-002-property-packet.pdf",
+    "SYN-003": "syn-003-property-packet.pdf",
+}
 
 class AskRequest(BaseModel):
     question: str
-
+    property_id: str | None = None
 
 @app.get("/health")
 def health():
@@ -28,15 +33,26 @@ def ingest_documents():
 
 @app.post("/ask")
 def ask_question(request: AskRequest):
+    document_name = None
+
+    if request.property_id is not None:
+        document_name = PROPERTY_DOCUMENTS.get(request.property_id)
+
+        if document_name is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Unknown property ID.",
+            )
+
     results = search_similar_chunks(
         request.question,
-        top_k=3,
+        top_k=5 if document_name else 3,
         initial_k=50,
-        max_chunks_per_doc=1,
+        max_chunks_per_doc=5 if document_name else 1,
         vector_weight=0.5,
         keyword_weight=0.5,
+        document_name=document_name,
     )
-
     if not results:
         return {
             "question": request.question,
@@ -59,7 +75,7 @@ def ask_question(request: AskRequest):
                     "hybrid_score": round(float(r["hybrid_score"]), 4),
                     "vector_distance": round(float(r["vector_distance"]), 4),
                     "keyword_score": round(float(r["keyword_score"]), 4),
-                    "preview": r["text"][:200] + ("..." if len(r["text"]) > 200 else "")
+                    "preview": r["text"]
                 }
                 for r in results
             ]
@@ -79,7 +95,7 @@ def ask_question(request: AskRequest):
                 "hybrid_score": round(float(r["hybrid_score"]), 4),
                 "vector_distance": round(float(r["vector_distance"]), 4),
                 "keyword_score": round(float(r["keyword_score"]), 4),
-                "preview": r["text"][:200] + ("..." if len(r["text"]) > 200 else "")
+                "preview": r["text"]
             }
             for r in results
         ]
