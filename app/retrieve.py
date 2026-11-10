@@ -12,27 +12,37 @@ def search_similar_chunks(
     vector_weight: float = 0.5,
     keyword_weight: float = 0.5,
     document_name: str | None = None,
+    property_id: str | None = None,
 ):
     query_embedding = embed_query(query)
 
     vector_sql = text("""
         SELECT
-            id,
-            document_name,
-            chunk_id,
-            page_number,
-            source_type,
-            text,
-            embedding <=> CAST(:query_embedding AS vector) AS vector_distance
-        FROM document_chunks
+            c.id,
+            c.document_name,
+            c.chunk_id,
+            c.page_number,
+            c.source_type,
+            c.text,
+            c.embedding <=> CAST(:query_embedding AS vector)
+                AS vector_distance
+        FROM document_chunks AS c
         WHERE (
             CAST(:document_name AS TEXT) IS NULL
-            OR document_name = CAST(:document_name AS TEXT)
+            OR c.document_name = CAST(:document_name AS TEXT)
         )
-        ORDER BY embedding <=> CAST(:query_embedding AS vector)
+        AND (
+            CAST(:property_id AS TEXT) IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM property_documents AS pd
+                WHERE pd.property_id = CAST(:property_id AS TEXT)
+                  AND pd.document_name = c.document_name
+            )
+        )
+        ORDER BY c.embedding <=> CAST(:query_embedding AS vector)
         LIMIT :initial_k
     """)
-
     with SessionLocal() as session:
         vector_results = session.execute(
             vector_sql,
@@ -40,6 +50,7 @@ def search_similar_chunks(
                 "query_embedding": str(query_embedding),
                 "initial_k": initial_k,
                 "document_name": document_name,
+                "property_id": property_id,
             },
         ).fetchall()
         

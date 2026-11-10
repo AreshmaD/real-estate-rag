@@ -3,6 +3,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from app.api import app
+from unittest.mock import patch
 
 
 def property_input(property_id, **changes):
@@ -23,6 +24,12 @@ def property_input(property_id, **changes):
 
 class ComparisonEndpointTests(unittest.TestCase):
     def setUp(self):
+        property_lookup = patch(
+            "app.api.get_existing_property_ids",
+            return_value={"SYN-001", "SYN-002", "SYN-003"},
+        )
+        property_lookup.start()
+        self.addCleanup(property_lookup.stop)
         self.client = TestClient(app)
 
         self.first = property_input("SYN-001")
@@ -114,7 +121,7 @@ class ComparisonEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
         self.assertIn(
-            "Unknown sample property",
+            "Unknown property ID",
             response.json()["detail"],
         )
 

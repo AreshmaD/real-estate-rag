@@ -1,46 +1,93 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
-from app.retrieve import search_similar_chunks
+from app.calculations import calculate_ownership_cost
+from app.database import Property, SessionLocal
 from app.generate import generate_answer
 from app.load_service import load_all_documents
-from app.calculations import calculate_ownership_cost
+from app.retrieve import search_similar_chunks
+
 
 app = FastAPI(title="Real Estate RAG Assistant")
 
-PROPERTY_DOCUMENTS = {
-    "SYN-001": "syn-001-property-packet.pdf",
-    "SYN-002": "syn-002-property-packet.pdf",
-    "SYN-003": "syn-003-property-packet.pdf",
-}
+
+def get_existing_property_ids(property_ids: list[str]) -> set[str]:
+    with SessionLocal() as session:
+        return set(
+            session.scalars(
+                select(Property.property_id).where(
+                    Property.property_id.in_(property_ids)
+                )
+            ).all()
+        )
+
+
+def format_sources(results: list[dict]) -> list[dict]:
+    return [
+        {
+            "document_name": item["document_name"],
+            "page_number": item["page_number"],
+            "chunk_id": item["chunk_id"],
+            "source_type": item["source_type"],
+            "hybrid_score": round(float(item["hybrid_score"]), 4),
+            "vector_distance": round(float(item["vector_distance"]), 4),
+            "keyword_score": round(float(item["keyword_score"]), 4),
+            "preview": item["text"],
+        }
+        for item in results
+    ]
+
 
 class AskRequest(BaseModel):
     question: str
     property_id: str | None = None
 
+
 class CostRequest(BaseModel):
-    purchase_price: float = Field(gt=0, allow_inf_nan=False)
-    down_payment: float = Field(ge=0, allow_inf_nan=False)
-    annual_interest_rate_percent: float = Field(
-        ge=0, allow_inf_nan=False
+    purchase_price: float = Field(
+        gt=0,
+        allow_inf_nan=False,
     )
-    loan_term_years: int = Field(gt=0, strict=True)
+    down_payment: float = Field(
+        ge=0,
+        allow_inf_nan=False,
+    )
+    annual_interest_rate_percent: float = Field(
+        ge=0,
+        allow_inf_nan=False,
+    )
+    loan_term_years: int = Field(
+        gt=0,
+        strict=True,
+    )
 
     annual_property_tax: float | None = Field(
-        default=None, ge=0, allow_inf_nan=False
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
     )
     annual_insurance: float | None = Field(
-        default=None, ge=0, allow_inf_nan=False
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
     )
     monthly_hoa: float | None = Field(
-        default=None, ge=0, allow_inf_nan=False
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
     )
     monthly_mortgage_insurance: float | None = Field(
-        default=None, ge=0, allow_inf_nan=False
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
     )
     monthly_maintenance_reserve: float = Field(
-        default=0, ge=0, allow_inf_nan=False
+        default=0,
+        ge=0,
+        allow_inf_nan=False,
     )
+
 
 class ComparisonProperty(CostRequest):
     property_id: str
@@ -52,6 +99,7 @@ class ComparisonRequest(BaseModel):
         max_length=3,
     )
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -60,20 +108,23 @@ def health():
 @app.post("/ingest")
 def ingest_documents():
     result = load_all_documents()
+
     return {
         "status": "success",
-        **result
+        **result,
     }
 
 
 @app.post("/ask")
 def ask_question(request: AskRequest):
-    document_name = None
+    property_selected = request.property_id is not None
 
-    if request.property_id is not None:
-        document_name = PROPERTY_DOCUMENTS.get(request.property_id)
+    if property_selected:
+        existing_ids = get_existing_property_ids(
+            [request.property_id]
+        )
 
-        if document_name is None:
+        if request.property_id not in existing_ids:
             raise HTTPException(
                 status_code=400,
                 detail="Unknown property ID.",
@@ -81,39 +132,34 @@ def ask_question(request: AskRequest):
 
     results = search_similar_chunks(
         request.question,
-        top_k=5 if document_name else 3,
+        top_k=5 if property_selected else 3,
         initial_k=50,
-        max_chunks_per_doc=5 if document_name else 1,
+        max_chunks_per_doc=5 if property_selected else 1,
         vector_weight=0.5,
         keyword_weight=0.5,
-        document_name=document_name,
+        property_id=request.property_id,
     )
+
+    insufficient_evidence = (
+        "I could not find enough supporting evidence "
+        "in the provided documents."
+    )
+
     if not results:
         return {
             "question": request.question,
-            "answer": "I could not find enough supporting evidence in the provided documents.",
-            "sources": []
+            "answer": insufficient_evidence,
+            "sources": [],
         }
 
+    sources = format_sources(results)
     best_hybrid = float(results[0]["hybrid_score"])
 
     if best_hybrid < 0.35:
         return {
             "question": request.question,
-            "answer": "I could not find enough supporting evidence in the provided documents.",
-            "sources": [
-                {
-                    "document_name": r["document_name"],
-                    "page_number": r["page_number"],
-                    "chunk_id": r["chunk_id"],
-                    "source_type": r["source_type"],
-                    "hybrid_score": round(float(r["hybrid_score"]), 4),
-                    "vector_distance": round(float(r["vector_distance"]), 4),
-                    "keyword_score": round(float(r["keyword_score"]), 4),
-                    "preview": r["text"]
-                }
-                for r in results
-            ]
+            "answer": insufficient_evidence,
+            "sources": sources,
         }
 
     answer = generate_answer(request.question, results)
@@ -121,35 +167,27 @@ def ask_question(request: AskRequest):
     return {
         "question": request.question,
         "answer": answer,
-        "sources": [
-            {
-                "document_name": r["document_name"],
-                "page_number": r["page_number"],
-                "chunk_id": r["chunk_id"],
-                "source_type": r["source_type"],
-                "hybrid_score": round(float(r["hybrid_score"]), 4),
-                "vector_distance": round(float(r["vector_distance"]), 4),
-                "keyword_score": round(float(r["keyword_score"]), 4),
-                "preview": r["text"]
-            }
-            for r in results
-        ]
+        "sources": sources,
     }
+
 
 @app.post("/cost-scenarios")
 def create_cost_scenario(request: CostRequest):
     try:
         return calculate_ownership_cost(**request.model_dump())
+
     except ValueError as error:
         raise HTTPException(
             status_code=422,
             detail=str(error),
         ) from error
 
+
 @app.post("/comparisons")
 def compare_properties(request: ComparisonRequest):
     property_ids = [
-        item.property_id for item in request.properties
+        item.property_id
+        for item in request.properties
     ]
 
     if len(property_ids) != len(set(property_ids)):
@@ -158,14 +196,15 @@ def compare_properties(request: ComparisonRequest):
             detail="Each property must appear only once.",
         )
 
+    existing_ids = get_existing_property_ids(property_ids)
+
     for property_id in property_ids:
-        if property_id not in PROPERTY_DOCUMENTS:
+        if property_id not in existing_ids:
             raise HTTPException(
                 status_code=422,
-                detail=f"Unknown sample property: {property_id}",
+                detail=f"Unknown property ID: {property_id}",
             )
 
-    # Require consistent loan assumptions for this first version.
     first = request.properties[0]
 
     for item in request.properties[1:]:
@@ -189,6 +228,7 @@ def compare_properties(request: ComparisonRequest):
 
         try:
             calculation = calculate_ownership_cost(**inputs)
+
         except ValueError as error:
             raise HTTPException(
                 status_code=422,
@@ -213,3 +253,41 @@ def compare_properties(request: ComparisonRequest):
             "Utilities, closing costs, and one-time repairs are excluded.",
         ],
     }
+
+
+@app.get("/properties")
+def list_properties():
+    with SessionLocal() as session:
+        properties = session.execute(
+            select(Property).order_by(Property.property_id)
+        ).scalars().all()
+
+        return {
+            "properties": [
+                {
+                    "property_id": item.property_id,
+                    "address": item.address,
+                    "city": item.city,
+                    "state": item.state,
+                    "is_synthetic": item.is_synthetic,
+                    "asking_price": float(item.asking_price),
+                    "annual_property_tax": (
+                        None
+                        if item.annual_property_tax is None
+                        else float(item.annual_property_tax)
+                    ),
+                    "annual_insurance": (
+                        None
+                        if item.annual_insurance is None
+                        else float(item.annual_insurance)
+                    ),
+                    "monthly_hoa": (
+                        None
+                        if item.monthly_hoa is None
+                        else float(item.monthly_hoa)
+                    ),
+                    "source_notes": item.source_notes,
+                }
+                for item in properties
+            ]
+        }
