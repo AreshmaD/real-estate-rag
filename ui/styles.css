@@ -1,0 +1,172 @@
+/* Main workspace */
+[data-testid="stMainBlockContainer"] {
+    max-width: 1320px;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
+
+h1 {
+    letter-spacing: -0.045em;
+    line-height: 1.15;
+}
+
+h2,
+h3 {
+    letter-spacing: -0.025em;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    border-right: none;
+}
+
+[data-testid="stSidebar"] h1 {
+    font-size: 1.65rem;
+}
+
+[data-testid="stSidebar"] hr {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Main navigation */
+[data-testid="stMain"] [data-baseweb="tab-list"] {
+    gap: 0.5rem;
+    background: #e8ede8;
+    padding: 0.4rem;
+    border-radius: 14px;
+    margin-top: 1.2rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+[data-testid="stMain"] [data-baseweb="tab"] {
+    border-radius: 10px;
+    padding: 0.7rem 1.1rem;
+    height: auto;
+    color: #51665a;
+}
+
+[data-testid="stMain"] [data-baseweb="tab"][aria-selected="true"] {
+    background: #ffffff;
+    color: #165c45;
+    box-shadow: 0 2px 6px rgba(25, 50, 35, 0.08);
+}
+
+[data-testid="stMain"] [data-baseweb="tab-highlight"],
+[data-testid="stMain"] [data-baseweb="tab-border"] {
+    display: none;
+}
+
+/* Forms */
+[data-testid="stForm"] {
+    background: #ffffff;
+    border: 1px solid #dfe7df;
+    border-radius: 18px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(25, 50, 35, 0.025);
+}
+
+/* Summary cards */
+[data-testid="stMetric"] {
+    background: #ffffff;
+    border: 1px solid #dfe7df;
+    border-radius: 16px;
+    padding: 1.1rem 1.25rem;
+}
+
+[data-testid="stMetricValue"] {
+    color: #193f30;
+    letter-spacing: -0.04em;
+}
+
+/* Primary actions */
+[data-testid="stFormSubmitButton"] button {
+    background: #18735b;
+    color: #ffffff;
+    border: 1px solid #18735b;
+    border-radius: 10px;
+    padding: 0.55rem 1rem;
+    font-weight: 600;
+}
+
+[data-testid="stFormSubmitButton"] button:hover {
+    background: #125b48;
+    color: #ffffff;
+    border-color: #125b48;
+}
+
+[data-testid="stFormSubmitButton"] button:disabled {
+    opacity: 0.55;
+}
+
+/* Evidence and supporting details */
+[data-testid="stMain"] [data-testid="stExpander"] {
+    background: #ffffff;
+    border-radius: 12px;
+}
+
+[data-testid="stAlert"] {
+    border-radius: 12px;
+}
+
+/* Custom page header */
+.workspace-hero {
+    background: linear-gradient(120deg, #173f30, #245e48);
+    border-radius: 22px;
+    padding: 2rem;
+    margin-bottom: 1.3rem;
+    color: #ffffff;
+}
+
+.workspace-eyebrow {
+    color: #b4ddc6;
+    font-size: 0.73rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+}
+
+.workspace-title {
+    margin: 0;
+    font-size: clamp(1.8rem, 3vw, 2.8rem);
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    line-height: 1.15;
+}
+
+.workspace-subtitle {
+    color: #d6e9dd;
+    margin-top: 0.8rem;
+    max-width: 650px;
+    line-height: 1.6;
+}
+
+.workspace-badge {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 100px;
+    border: 1px solid #749f87;
+    background: #2b5943;
+    color: #ecf7ef;
+    font-size: 0.75rem;
+}
+
+@media (max-width: 700px) {
+    [data-testid="stMainBlockContainer"] {
+        padding-top: 1rem;
+    }
+
+    .workspace-hero {
+        padding: 1.4rem;
+    }
+
+    [data-testid="stForm"] {
+        padding: 1rem;
+    }
+
+    [data-testid="stMain"] [data-baseweb="tab"] {
+        padding: 0.6rem 0.75rem;
+    }
+}
