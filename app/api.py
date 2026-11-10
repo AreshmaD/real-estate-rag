@@ -1,9 +1,10 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.retrieve import search_similar_chunks
 from app.generate import generate_answer
 from app.load_service import load_all_documents
+from app.calculations import calculate_ownership_cost
 
 app = FastAPI(title="Real Estate RAG Assistant")
 
@@ -16,6 +17,40 @@ PROPERTY_DOCUMENTS = {
 class AskRequest(BaseModel):
     question: str
     property_id: str | None = None
+
+class CostRequest(BaseModel):
+    purchase_price: float = Field(gt=0, allow_inf_nan=False)
+    down_payment: float = Field(ge=0, allow_inf_nan=False)
+    annual_interest_rate_percent: float = Field(
+        ge=0, allow_inf_nan=False
+    )
+    loan_term_years: int = Field(gt=0, strict=True)
+
+    annual_property_tax: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    annual_insurance: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    monthly_hoa: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    monthly_mortgage_insurance: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    monthly_maintenance_reserve: float = Field(
+        default=0, ge=0, allow_inf_nan=False
+    )
+
+class ComparisonProperty(CostRequest):
+    property_id: str
+
+
+class ComparisonRequest(BaseModel):
+    properties: list[ComparisonProperty] = Field(
+        min_length=2,
+        max_length=3,
+    )
 
 @app.get("/health")
 def health():
@@ -99,4 +134,82 @@ def ask_question(request: AskRequest):
             }
             for r in results
         ]
+    }
+
+@app.post("/cost-scenarios")
+def create_cost_scenario(request: CostRequest):
+    try:
+        return calculate_ownership_cost(**request.model_dump())
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+@app.post("/comparisons")
+def compare_properties(request: ComparisonRequest):
+    property_ids = [
+        item.property_id for item in request.properties
+    ]
+
+    if len(property_ids) != len(set(property_ids)):
+        raise HTTPException(
+            status_code=422,
+            detail="Each property must appear only once.",
+        )
+
+    for property_id in property_ids:
+        if property_id not in PROPERTY_DOCUMENTS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown sample property: {property_id}",
+            )
+
+    # Require consistent loan assumptions for this first version.
+    first = request.properties[0]
+
+    for item in request.properties[1:]:
+        if (
+            item.annual_interest_rate_percent
+            != first.annual_interest_rate_percent
+            or item.loan_term_years != first.loan_term_years
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Use the same interest rate and loan term "
+                    "for every property in this comparison."
+                ),
+            )
+
+    results = []
+
+    for item in request.properties:
+        inputs = item.model_dump(exclude={"property_id"})
+
+        try:
+            calculation = calculate_ownership_cost(**inputs)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{item.property_id}: {error}",
+            ) from error
+
+        results.append(
+            {
+                "property_id": item.property_id,
+                "inputs": inputs,
+                "calculation": calculation,
+            }
+        )
+
+    return {
+        "properties": results,
+        "notes": [
+            "Results use supplied scenario inputs, not verified quotes.",
+            "Incomplete subtotals exclude unknown costs.",
+            "Do not compare incomplete subtotals against complete totals.",
+            "Maintenance reserves are separate from housing costs.",
+            "Utilities, closing costs, and one-time repairs are excluded.",
+        ],
     }
