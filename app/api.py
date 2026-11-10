@@ -1,13 +1,20 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.calculations import calculate_ownership_cost
 from app.database import Property, SessionLocal
 from app.generate import generate_answer
-from app.load_service import load_all_documents
+from app.load_service import (
+    load_all_documents,
+    load_document_for_property,
+    PropertyNotFoundError,
+)
 from app.retrieve import search_similar_chunks
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
+from pypdf.errors import PdfReadError
 
 app = FastAPI(title="Real Estate RAG Assistant")
 
@@ -291,3 +298,111 @@ def list_properties():
                 for item in properties
             ]
         }
+
+@app.post("/properties/{property_id}/documents")
+def upload_property_document(
+    property_id: str,
+    file: UploadFile = File(...),
+):
+    max_bytes = 10 * 1024 * 1024
+    block_size = 64 * 1024
+
+    try:
+        existing_ids = get_existing_property_ids([property_id])
+
+        if property_id not in existing_ids:
+            raise HTTPException(
+                status_code=404,
+                detail="Unknown property ID.",
+            )
+
+        suffix = Path(file.filename or "").suffix.lower()
+
+        if suffix not in {".pdf", ".txt"}:
+            raise HTTPException(
+                status_code=415,
+                detail="Only PDF and TXT files are supported.",
+            )
+
+        # Use a generated local path, never the supplied filename.
+        with TemporaryDirectory(prefix="property-upload-") as directory:
+            path = Path(directory) / f"document{suffix}"
+            size = 0
+
+            with path.open("wb") as destination:
+                while True:
+                    block = file.file.read(block_size)
+
+                    if not block:
+                        break
+
+                    size += len(block)
+
+                    if size > max_bytes:
+                        raise HTTPException(
+                            status_code=413,
+                            detail="The upload limit is 10 MiB.",
+                        )
+
+                    destination.write(block)
+
+            if size == 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="The uploaded file is empty.",
+                )
+
+            # Check content, not just the filename extension.
+            if suffix == ".pdf":
+                with path.open("rb") as source:
+                    header = source.read(1024)
+
+                if b"%PDF-" not in header:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="The file does not appear to be a PDF.",
+                    )
+            else:
+                try:
+                    text = path.read_bytes().decode("utf-8")
+                except UnicodeDecodeError as error:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="TXT files must use UTF-8 encoding.",
+                    ) from error
+
+                if "\x00" in text:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="The TXT file contains binary content.",
+                    )
+
+            try:
+                return load_document_for_property(
+                    path,
+                    property_id,
+                )
+
+            except PropertyNotFoundError as error:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Unknown property ID.",
+                ) from error
+
+            except PdfReadError as error:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "The PDF could not be read. "
+                        "Use a valid, unencrypted PDF."
+                    ),
+                ) from error
+
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=422,
+                    detail=str(error),
+                ) from error
+
+    finally:
+        file.file.close()
